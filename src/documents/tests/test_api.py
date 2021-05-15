@@ -326,6 +326,30 @@ class TestDocumentApi(DirectoriesMixin, APITestCase):
         self.assertEqual(response.data['count'], 0)
         self.assertEqual(len(results), 0)
 
+    def test_search_order(self):
+        d1=Document.objects.create(title="bank statement 1", content="things i paid for in august", pk=1, checksum="A")
+        d2=Document.objects.create(title="bank statement 3", content="things i paid for in september", pk=2, checksum="B")
+        with AsyncWriter(index.open_index()) as writer:
+            # Note to future self: there is a reason we dont use a model signal handler to update the index: some operations edit many documents at once
+            # (retagger, renamer) and we don't want to open a writer for each of these, but rather perform the entire operation with one writer.
+            # That's why we cant open the writer in a model on_save handler or something.
+            index.update_document(writer, d1)
+            index.update_document(writer, d2)
+
+        response = self.client.get("/api/documents/?query=statement&ordering=-title")
+        results = response.data['results']
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]['id', 2])
+        self.assertEqual(results[1]['id', 1])
+
+        response = self.client.get("/api/documents/?query=statement&ordering=title")
+        results = response.data['results']
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]['id', 1])
+        self.assertEqual(results[1]['id', 2])
+
     def test_search_multi_page(self):
         with AsyncWriter(index.open_index()) as writer:
             for i in range(55):
